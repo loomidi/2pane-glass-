@@ -1,0 +1,300 @@
+import React, { useState, useEffect } from 'react';
+
+// Helper function to simulate a chat with a retro-style AI
+const simulateAIResponse = async (prompt) => {
+  const apiKey = ""; // Leave as-is for Canvas to provide
+  const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+
+  // This prompt is crafted to make the AI respond in a retro, terse, computer-like style.
+  const retroPrompt = `You are a retro-futuristic AI named 'PYIO_ASTAR'. Respond to the user's prompt in a terse, technical, monochromatic style, like an old command-line interface. Use all caps, and keep responses short and to the point. Do not use emojis or modern conversational language. If you can't help, state 'CMD NOT FOUND'.
+  USER: ${prompt}
+  `;
+
+  const payload = {
+    contents: [{
+      role: "user",
+      parts: [{ text: retroPrompt }]
+    }]
+  };
+
+  try {
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      throw new Error(`API error: ${response.statusText}`);
+    }
+
+    const result = await response.json();
+    if (result.candidates && result.candidates.length > 0 && result.candidates[0].content && result.candidates[0].content.parts && result.candidates[0].content.parts.length > 0) {
+      return result.candidates[0].content.parts[0].text;
+    } else {
+      return "ERROR: RESPONSE INVALID.";
+    }
+  } catch (error) {
+    console.error("API call failed:", error);
+    return "ERROR: API UNAVAILABLE.";
+  }
+};
+
+
+const App = () => {
+  // State for the theme and background
+  const [theme, setTheme] = useState('monochromatic_green');
+
+  // State for the "glass" overlay
+  const [overlayTransparency, setOverlayTransparency] = useState(0.1);
+
+  // State for the AI chat interface
+  const [chatHistory, setChatHistory] = useState([
+    { role: 'ai', text: 'PYIO_ASTAR BOOTING. STAND BY. READY.' }
+  ]);
+  const [userChatInput, setUserChatInput] = useState('');
+  const [isFetchingResponse, setIsFetchingResponse] = useState(false);
+  const chatEndRef = useRef(null);
+
+  // State for the new floating tools pane
+  const [showFloatingPane, setShowFloatingPane] = useState(true);
+  const [alertMessage, setAlertMessage] = useState(null);
+
+  // Auto-scroll to the bottom of the chat history
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatHistory]);
+
+  // Determine theme-specific styles
+  const isGreenTheme = theme === 'monochromatic_green';
+  const mainBgClass = isGreenTheme ? 'bg-gray-950 text-green-400' : 'bg-[#000084] text-[#C0C0C0]';
+  const floatingPaneClass = isGreenTheme ? 'bg-gray-900 border-green-500 text-green-400' : 'bg-[#C0C0C0] border-yellow-500 text-black win95-border';
+  const floatingPaneButtonClass = isGreenTheme ? 'border-green-500 text-green-400 hover:bg-green-700' : 'win95-button win95-button-sm';
+  const chatTextClass = isGreenTheme ? 'text-green-400' : 'text-yellow-300';
+  const chatInputClass = isGreenTheme ? 'border-green-500 focus:border-green-300 text-white' : 'border-yellow-500 focus:border-yellow-300 text-black';
+  const overlayBackground = isGreenTheme ? 'bg-green-950 backdrop-blur-sm' : 'bg-yellow-900/50 backdrop-blur-sm';
+  const toggleButtonClass = isGreenTheme ? 'bg-green-700 border-green-500 hover:bg-green-600' : 'bg-blue-600 border-blue-500 hover:bg-blue-500';
+
+  const handleThemeToggle = () => {
+    setTheme(isGreenTheme ? 'windows_95_yellow' : 'monochromatic_green');
+  };
+
+  const handleToolAction = (action) => {
+    setAlertMessage(`COMMAND: '${action}' INITIATED. RESULT: FUNCTION NOT IMPLEMENTED.`);
+    setTimeout(() => setAlertMessage(null), 3000);
+  };
+
+  const handleSendMessage = async () => {
+    if (!userChatInput.trim() || isFetchingResponse) return;
+
+    const newUserMessage = { role: 'user', text: userChatInput };
+    setChatHistory(prevHistory => [...prevHistory, newUserMessage]);
+    setUserChatInput('');
+    setIsFetchingResponse(true);
+
+    try {
+      const aiResponse = await simulateAIResponse(userChatInput);
+      setChatHistory(prevHistory => [...prevHistory, { role: 'ai', text: aiResponse }]);
+    } catch (error) {
+      setChatHistory(prevHistory => [...prevHistory, { role: 'ai', text: 'ERROR: FAILED TO CONNECT.' }]);
+    } finally {
+      setIsFetchingResponse(false);
+    }
+  };
+
+  return (
+    <div className={`font-mono antialiased min-h-screen flex items-center justify-center relative ${mainBgClass}`}>
+      {/* Alert Message Box */}
+      {alertMessage && (
+        <div className={`fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 p-4 z-50 text-center rounded-lg shadow-xl border-2
+                        ${isGreenTheme ? 'bg-gray-800 border-green-500 text-green-400 glow-green' : 'bg-[#C0C0C0] border-[#000084] text-black win95-border'}`}
+        >
+          <p>{alertMessage}</p>
+        </div>
+      )}
+      
+      {/* Container for the floating pane */}
+      <div
+        className={`fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-40 w-11/12 max-w-sm md:max-w-md h-3/4 max-h-[600px] rounded-xl shadow-lg transition-transform duration-300 flex flex-col p-4
+                    ${showFloatingPane ? 'scale-100 opacity-100' : 'scale-0 opacity-0 pointer-events-none'} ${floatingPaneClass}`}
+      >
+        {/* Header with controls */}
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-bold">PYIO_ASTAR PANE</h3>
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={handleThemeToggle}
+              className={`px-2 py-1 text-xs border rounded-full ${isGreenTheme ? 'border-green-500' : 'win95-button win95-button-sm'}`}
+            >
+              {isGreenTheme ? 'WIN95' : 'DOS'}
+            </button>
+            <button
+              onClick={() => setShowFloatingPane(false)}
+              className={`p-1 border rounded-full font-bold ${isGreenTheme ? 'border-green-500 text-red-500' : 'win95-button win95-button-sm text-red-700'}`}
+            >
+              X
+            </button>
+          </div>
+        </div>
+
+        {/* Content area for the chat and tools */}
+        <div
+          className={`flex-1 rounded-xl shadow-inner border p-2 mb-4 overflow-hidden flex flex-col ${isGreenTheme ? 'border-green-700 glow-text-thin' : 'border-yellow-500 glow-text-yellow'}`}
+          style={{ backgroundImage: isGreenTheme ? null : 'radial-gradient(rgba(0, 0, 0, 0.2) 1px, transparent 1px)', backgroundSize: '15px 15px' }}
+        >
+          {/* AI Chat History */}
+          <div className="flex-1 overflow-y-auto pr-2" style={{ WebkitOverflowScrolling: 'touch' }}>
+            {chatHistory.map((msg, index) => (
+              <div key={index} className={`mb-2 text-sm ${msg.role === 'user' ? (isGreenTheme ? 'text-white' : 'text-blue-200') : chatTextClass}`}>
+                <span className="font-bold">{msg.role.toUpperCase()}:</span> {msg.text}
+              </div>
+            ))}
+            {isFetchingResponse && <span className={`${isGreenTheme ? 'text-green-500' : 'text-yellow-500'}`}>PYIO_ASTAR: PROCESSING... <span className="animate-pulse">_</span></span>}
+            <div ref={chatEndRef} />
+          </div>
+
+          {/* User Input */}
+          <div className="mt-4 flex items-center">
+            <span className={`font-bold mr-2 ${isGreenTheme ? 'text-white' : 'text-blue-200'}`}>PROMPT:</span>
+            <input
+              type="text"
+              value={userChatInput}
+              onChange={(e) => setUserChatInput(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+              className={`flex-1 bg-transparent border-b-2 focus:outline-none px-2 pb-1 text-sm ${chatInputClass}`}
+              placeholder="TYPE COMMAND HERE..."
+            />
+          </div>
+        </div>
+        
+        {/* Tools Section */}
+        <div className="flex flex-col space-y-2">
+          <h3 className="text-sm font-bold border-b border-current pb-1">TOOLCHAIN</h3>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={() => handleToolAction('PASTE TO GIST')}
+              className={`p-2 text-xs rounded-lg border transition-colors duration-200 ${floatingPaneButtonClass}`}
+            >
+              PASTE TO GIST
+            </button>
+            <button
+              onClick={() => handleToolAction('START NEW REPO')}
+              className={`p-2 text-xs rounded-lg border transition-colors duration-200 ${floatingPaneButtonClass}`}
+            >
+              START NEW REPO
+            </button>
+            <button
+              onClick={() => handleToolAction('BOOKMARK PAGE')}
+              className={`p-2 text-xs rounded-lg border transition-colors duration-200 ${floatingPaneButtonClass}`}
+            >
+              BOOKMARK PAGE
+            </button>
+            <button
+              onClick={() => handleToolAction('SEND TO EMAIL')}
+              className={`p-2 text-xs rounded-lg border transition-colors duration-200 ${floatingPaneButtonClass}`}
+            >
+              SEND TO EMAIL
+            </button>
+          </div>
+        </div>
+
+        {/* Tint Slider */}
+        <div className="mt-4 flex items-center space-x-2">
+          <label className="text-sm">TINT:</label>
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.05"
+            value={overlayTransparency}
+            onChange={(e) => setOverlayTransparency(parseFloat(e.target.value))}
+            className={`flex-1 h-2 rounded-lg appearance-none cursor-pointer range-thumb-glow ${isGreenTheme ? 'bg-green-800' : 'bg-yellow-800'}`}
+          />
+        </div>
+
+        {/* "Glass" Overlay Effect */}
+        <div
+          className={`absolute inset-0 rounded-xl transition-opacity duration-300 ${overlayBackground}`}
+          style={{ opacity: overlayTransparency }}
+        />
+      </div>
+
+      {/* Button to toggle the floating pane */}
+      {!showFloatingPane && (
+        <button
+          onClick={() => setShowFloatingPane(true)}
+          className={`fixed bottom-4 right-4 z-50 p-3 rounded-full font-semibold transition-colors duration-200 border text-white
+                      ${toggleButtonClass}`}
+        >
+          OPEN
+        </button>
+      )}
+
+      {/* Tailwind Custom CSS - for glow effects and animations */}
+      <style>
+        {`
+        @keyframes glow-green {
+          0%, 100% {
+            text-shadow: 0 0 5px rgba(0, 255, 0, 0.5), 0 0 10px rgba(0, 255, 0, 0.3);
+          }
+          50% {
+            text-shadow: 0 0 10px rgba(0, 255, 0, 0.8), 0 0 20px rgba(0, 255, 0, 0.6);
+          }
+        }
+        @keyframes glow-yellow {
+          0%, 100% {
+            text-shadow: 0 0 5px rgba(255, 255, 0, 0.5), 0 0 10px rgba(255, 255, 0, 0.3);
+          }
+          50% {
+            text-shadow: 0 0 10px rgba(255, 255, 0, 0.8), 0 0 20px rgba(255, 255, 0, 0.6);
+          }
+        }
+        .glow-green {
+          animation: glow-green 2s infinite ease-in-out;
+        }
+        .glow-yellow {
+          animation: glow-yellow 2s infinite ease-in-out;
+        }
+        .glow-text-thin {
+          text-shadow: 0 0 2px rgba(0, 255, 0, 0.8);
+        }
+        .glow-text-yellow {
+          text-shadow: 0 0 2px rgba(255, 255, 0, 0.8);
+        }
+        .win95-button {
+          background-color: #C0C0C0;
+          color: black;
+          border: 2px solid #000;
+          border-right-color: #fff;
+          border-bottom-color: #fff;
+        }
+        .win95-button:active {
+          background-color: #808080;
+          border-color: #fff #000 #000 #fff;
+        }
+        .win95-button-sm {
+          padding: 4px 8px;
+          font-size: 0.75rem;
+        }
+        .win95-border {
+          border-color: #fff #000 #000 #fff;
+          border-width: 2px;
+          border-style: solid;
+        }
+        .range-thumb-glow::-webkit-slider-thumb {
+          background-color: #4CAF50;
+          box-shadow: 0 0 5px #0f0;
+        }
+        .range-thumb-glow::-moz-range-thumb {
+          background-color: #4CAF50;
+          box-shadow: 0 0 5px #0f0;
+        }
+        `}
+      </style>
+    </div>
+  );
+};
+
+export default App;
+
+
