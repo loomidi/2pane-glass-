@@ -1,0 +1,481 @@
+import React, { useState, useEffect, useRef } from 'react';
+
+// Helper function to simulate a chat with a retro-style AI
+const simulateAIResponse = async (prompt) => {
+  const apiKey = ""; // Leave as-is for Canvas to provide
+  const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+
+  // This prompt is crafted to make the AI respond in a retro, terse, computer-like style.
+  const retroPrompt = `You are a retro-futuristic AI named 'PYIO_ASTAR'. Respond to the user's prompt in a terse, technical, monochromatic style, like an old command-line interface. Use all caps, and keep responses short and to the point. Do not use emojis or modern conversational language. If you can't help, state 'CMD NOT FOUND'.
+  USER: ${prompt}
+  `;
+
+  const payload = {
+    contents: [{
+      role: "user",
+      parts: [{ text: retroPrompt }]
+    }]
+  };
+
+  try {
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      throw new Error(`API error: ${response.statusText}`);
+    }
+
+    const result = await response.json();
+    if (result.candidates && result.candidates.length > 0 && result.candidates[0].content && result.candidates[0].content.parts && result.candidates[0].content.parts.length > 0) {
+      return result.candidates[0].content.parts[0].text;
+    } else {
+      return "ERROR: RESPONSE INVALID.";
+    }
+  } catch (error) {
+    console.error("API call failed:", error);
+    return "ERROR: API UNAVAILABLE.";
+  }
+};
+
+
+const App = () => {
+  // State for the main pane layout
+  const [activePane, setActivePane] = useState('left');
+
+  // State for the "glass" overlay
+  const [showOverlay, setShowOverlay] = useState(true);
+  const [overlayTransparency, setOverlayTransparency] = useState(0.1);
+  const [overlayColor, setOverlayColor] = useState('#0f0'); // Green default
+
+  // State for the theme and background
+  const [theme, setTheme] = useState('monochromatic_green');
+  const [backgroundIndex, setBackgroundIndex] = useState(0);
+
+  // State for the AI chat interface
+  const [chatHistory, setChatHistory] = useState([
+    { role: 'ai', text: 'PYIO_ASTAR BOOTING. STAND BY. READY.' }
+  ]);
+  const [userChatInput, setUserChatInput] = useState('');
+  const [isFetchingResponse, setIsFetchingResponse] = useState(false);
+
+  // State for the new floating tools pane
+  const [showFloatingPane, setShowFloatingPane] = useState(false);
+  const [alertMessage, setAlertMessage] = useState(null);
+
+  // Hardcoded code content for the panes
+  const leftPaneCode = `
+FUNCTION MAIN_PROCESS()
+    // INITIATE DATA STREAM FROM LOCAL DRIVE
+    SET_DATA_STREAM_SOURCE(DISK_A)
+
+    // BEGIN DATA PROCESSING PROTOCOL
+    IF !CHECK_DATA_VALIDITY() THEN
+      PRINT("ERROR: DATA CORRUPTION DETECTED") // ERROR ON THIS LINE
+      RETURN_ERROR_CODE(101)
+    ENDIF
+
+    // PREPARE FOR DATA SYNTHESIS
+    FOR i = 0 TO 100
+      DATA_PACKET(i) = ENCRYPT(DATA_BUFFER[i]) // ERROR ON THIS LINE
+    NEXT i
+
+    // TRANSMISSION PROTOCOL
+    SEND_DATA_PACKETS(ALL)
+    RETURN_SUCCESS_CODE(0)
+
+END FUNCTION
+  `;
+
+  const rightPaneCode = `
+class DataBuffer:
+    def __init__(self, size):
+        self.buffer = [None] * size
+        self.status = "INITIATED"
+        
+    def add_data(self, data):
+        # ERROR IN THIS LINE - variable not defined
+        if len(self.buffer) < size_limit: 
+            self.buffer.append(data)
+            self.status = "ACTIVE"
+            return True
+        self.status = "BUFFER FULL"
+        return False
+        
+    def get_data(self):
+        return self.buffer.pop(0) if self.buffer else None
+
+# USAGE EXAMPLE
+buffer_size = 512
+core_buffer = DataBuffer(buffer_size)
+core_buffer.add_data("PROTOCOL_A")
+  `;
+
+  // Simulate code errors on specific lines for demonstration
+  const codeErrorLines = {
+    left: [5, 10], // Lines with errors in left pane
+    right: [7], // Line with error in right pane
+  };
+
+  // Background patterns
+  const backgroundClasses = [
+    '', // Solid color
+    'dot-grid-bg', // Perforated dot grid
+    'line-grid-bg' // Linear grid
+  ];
+
+  // Function to handle sending a message to the AI
+  const handleSendMessage = async () => {
+    if (!userChatInput.trim() || isFetchingResponse) return;
+
+    const newUserMessage = { role: 'user', text: userChatInput };
+    setChatHistory(prevHistory => [...prevHistory, newUserMessage]);
+    setUserChatInput('');
+    setIsFetchingResponse(true);
+
+    try {
+      const aiResponse = await simulateAIResponse(userChatInput);
+      setChatHistory(prevHistory => [...prevHistory, { role: 'ai', text: aiResponse }]);
+    } catch (error) {
+      setChatHistory(prevHistory => [...prevHistory, { role: 'ai', text: 'ERROR: FAILED TO CONNECT.' }]);
+    } finally {
+      setIsFetchingResponse(false);
+    }
+  };
+
+  // Helper function to render a single line of code with error highlighting
+  const renderCodeLine = (line, index, errorLines) => {
+    const isErrorLine = errorLines.includes(index + 1);
+    const errorClass = isErrorLine ? 'text-red-500 glow-red' : '';
+    return (
+      <span key={index} className={`block relative ${errorClass}`}>
+        <span className="text-gray-500 mr-4 inline-block w-6 text-right select-none">{index + 1}</span>
+        {line}
+      </span>
+    );
+  };
+
+  // Determine theme-specific styles
+  const isGreenTheme = theme === 'monochromatic_green';
+  const mainBgClass = isGreenTheme ? 'bg-gray-950 text-green-400' : 'bg-[#000084] text-[#C0C0C0]';
+  const headerTextClass = isGreenTheme ? 'text-green-300' : 'text-yellow-300';
+  const paneBorderClass = isGreenTheme ? 'border-green-800' : 'border-yellow-500 shadow-md shadow-yellow-500/50';
+  const chatTextClass = isGreenTheme ? 'text-green-400' : 'text-yellow-300';
+  const chatInputClass = isGreenTheme ? 'border-green-500 focus:border-green-300 text-white' : 'border-yellow-500 focus:border-yellow-300 text-black';
+  const buttonActiveColor = isGreenTheme ? 'bg-green-700 text-white' : 'bg-yellow-400 text-black shadow-lg';
+  const buttonInactiveColor = isGreenTheme ? 'bg-green-900 text-green-300' : 'bg-[#C0C0C0] text-black';
+  const overlayBackground = isGreenTheme ? 'bg-green-950 backdrop-blur-sm' : 'bg-yellow-900/50 backdrop-blur-sm';
+  const overlayTextColor = isGreenTheme ? 'text-green-400' : 'text-yellow-300';
+  const floatingPaneClass = isGreenTheme ? 'bg-gray-900 border-green-500 text-green-400' : 'bg-[#C0C0C0] border-yellow-500 text-black';
+  const floatingPaneButtonClass = isGreenTheme ? 'border-green-500 text-green-400 hover:bg-green-700' : 'border-[#000084] bg-[#C0C0C0] text-black hover:bg-[#808080]';
+
+
+  const handleThemeToggle = () => {
+    setTheme(isGreenTheme ? 'windows_95_yellow' : 'monochromatic_green');
+    // Reset overlay color and transparency when toggling theme
+    setOverlayColor(isGreenTheme ? '#ffb700' : '#0f0');
+    setOverlayTransparency(0.2);
+  };
+  
+  const handleBackgroundToggle = () => {
+    setBackgroundIndex((prevIndex) => (prevIndex + 1) % backgroundClasses.length);
+  };
+
+  const handleToolAction = (action) => {
+    setAlertMessage(`COMMAND: '${action}' INITIATED. RESULT: FUNCTION NOT IMPLEMENTED.`);
+    setTimeout(() => setAlertMessage(null), 3000);
+  };
+
+  return (
+    <div className={`font-mono antialiased min-h-screen flex flex-col p-4 overflow-hidden relative ${mainBgClass}`}>
+      {/* Alert Message Box */}
+      {alertMessage && (
+        <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 p-4 z-50 text-center rounded-lg shadow-xl border-2
+                        ${isGreenTheme ? 'bg-gray-800 border-green-500 text-green-400 glow-green' : 'bg-[#C0C0C0] border-[#000084] text-black win95-border'}`}
+        >
+          <p>{alertMessage}</p>
+        </div>
+      )}
+
+      {/* Header and Controls */}
+      <div className="flex flex-col md:flex-row justify-between items-center mb-4 text-sm space-y-2 md:space-y-0">
+        <div className="flex items-center space-x-4">
+          <button
+            onClick={handleThemeToggle}
+            className={`px-4 py-2 rounded-full font-semibold transition-colors duration-200 border ${isGreenTheme ? 'border-green-500 glow-green-btn' : 'win95-button'}`}
+          >
+            {isGreenTheme ? 'WIN95 THEME' : 'DOS THEME'}
+          </button>
+          <button
+            onClick={handleBackgroundToggle}
+            className={`px-4 py-2 rounded-full font-semibold transition-colors duration-200 border ${isGreenTheme ? 'border-green-500 glow-green-btn' : 'win95-button'}`}
+          >
+            TOGGLE BACKGROUND
+          </button>
+        </div>
+        <h1 className={`text-lg font-bold ${headerTextClass}`}>
+          {isGreenTheme ? 'QUANTUM_OS v1.0' : 'HYPERLAND v1.0'}
+        </h1>
+        <div className="flex items-center space-x-4">
+          <label className="flex items-center space-x-2">
+            <span>TINT:</span>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              value={overlayTransparency}
+              onChange={(e) => setOverlayTransparency(parseFloat(e.target.value))}
+              className={`w-24 h-2 rounded-lg appearance-none cursor-pointer range-thumb-glow ${isGreenTheme ? 'bg-green-800' : 'bg-yellow-800'}`}
+            />
+          </label>
+          <button
+            onClick={() => setShowOverlay(!showOverlay)}
+            className={`px-4 py-2 border rounded-full hover:bg-opacity-50 transition-colors duration-200 ${isGreenTheme ? 'border-green-500 glow-green-btn' : 'win95-button'}`}
+          >
+            {showOverlay ? 'RETRACT GLASS' : 'DEPLOY GLASS'}
+          </button>
+        </div>
+      </div>
+
+      {/* Main Two-Pane Layout */}
+      <div className="flex-1 flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4">
+        {/* Left Pane - relative for overlay positioning */}
+        <div
+          className={`relative flex-1 rounded-xl shadow-lg transition-all duration-300 ease-in-out
+                      border overflow-hidden ${paneBorderClass} ${activePane === 'left' ? 'w-full md:w-1/2' : 'hidden md:block md:w-1/2'}`}
+        >
+          {/* Content */}
+          <div className={`p-4 h-full overflow-y-auto ${backgroundClasses[backgroundIndex]}`}>
+            <h2 className="text-xl font-bold mb-4 border-b border-current pb-2">PROCESS_LOGIC.Q</h2>
+            <pre className="text-sm leading-relaxed whitespace-pre-wrap">
+              {leftPaneCode.split('\n').map((line, index) => renderCodeLine(line, index, codeErrorLines.left))}
+            </pre>
+          </div>
+
+          {/* Overlay - absolute to cover content */}
+          {showOverlay && (
+            <div
+              className={`absolute inset-0 transition-opacity duration-500 flex flex-col p-4 ${overlayBackground} ${isGreenTheme ? 'glow-text-thin' : 'glow-text-yellow'}`}
+              style={{ opacity: overlayTransparency }}
+            >
+              <div className="flex-1 overflow-y-auto glow-text-thin">
+                {chatHistory.map((msg, index) => (
+                  <div key={index} className={`mb-2 ${msg.role === 'user' ? (isGreenTheme ? 'text-white' : 'text-blue-200') : chatTextClass}`}>
+                    <span className="font-bold">{msg.role.toUpperCase()}:</span> {msg.text}
+                  </div>
+                ))}
+                {isFetchingResponse && <span className={`${isGreenTheme ? 'text-green-500' : 'text-yellow-500'}`}>PYIO_ASTAR: PROCESSING... <span className="animate-pulse">_</span></span>}
+              </div>
+              <div className="mt-4 flex items-center">
+                <span className={`font-bold mr-2 ${isGreenTheme ? 'text-white' : 'text-blue-200'}`}>PROMPT:</span>
+                <input
+                  type="text"
+                  value={userChatInput}
+                  onChange={(e) => setUserChatInput(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+                  className={`flex-1 bg-transparent border-b-2 focus:outline-none px-2 pb-1 ${chatInputClass}`}
+                  placeholder="TYPE COMMAND HERE..."
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Right Pane */}
+        <div
+          className={`relative flex-1 rounded-xl shadow-lg transition-all duration-300 ease-in-out
+                      border overflow-hidden ${paneBorderClass} ${activePane === 'right' ? 'w-full md:w-1/2' : 'hidden md:block md:w-1/2'}`}
+        >
+          {/* Content */}
+          <div className={`p-4 h-full overflow-y-auto ${backgroundClasses[backgroundIndex]}`}>
+            <h2 className="text-xl font-bold mb-4 border-b border-current pb-2">CORE_BUFFER.PY</h2>
+            <pre className="text-sm leading-relaxed whitespace-pre-wrap">
+              {rightPaneCode.split('\n').map((line, index) => renderCodeLine(line, index, codeErrorLines.right))}
+            </pre>
+          </div>
+
+          {/* Overlay */}
+          {showOverlay && (
+            <div
+              className={`absolute inset-0 transition-opacity duration-500 flex flex-col p-4 ${overlayBackground} ${isGreenTheme ? 'glow-text-thin' : 'glow-text-yellow'}`}
+              style={{ opacity: overlayTransparency }}
+            >
+              <div className="flex-1 overflow-y-auto glow-text-thin">
+                {chatHistory.map((msg, index) => (
+                  <div key={index} className={`mb-2 ${msg.role === 'user' ? (isGreenTheme ? 'text-white' : 'text-blue-200') : chatTextClass}`}>
+                    <span className="font-bold">{msg.role.toUpperCase()}:</span> {msg.text}
+                  </div>
+                ))}
+                {isFetchingResponse && <span className={`${isGreenTheme ? 'text-green-500' : 'text-yellow-500'}`}>PYIO_ASTAR: PROCESSING... <span className="animate-pulse">_</span></span>}
+              </div>
+              <div className="mt-4 flex items-center">
+                <span className={`font-bold mr-2 ${isGreenTheme ? 'text-white' : 'text-blue-200'}`}>PROMPT:</span>
+                <input
+                  type="text"
+                  value={userChatInput}
+                  onChange={(e) => setUserChatInput(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+                  className={`flex-1 bg-transparent border-b-2 focus:outline-none px-2 pb-1 ${chatInputClass}`}
+                  placeholder="TYPE COMMAND HERE..."
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Mobile Toggle Buttons */}
+      <div className="flex justify-center mt-4 md:hidden">
+        <button
+          onClick={() => setActivePane('left')}
+          className={`px-6 py-2 rounded-l-full font-semibold transition-colors duration-200 border ${isGreenTheme ? 'border-green-800' : 'border-yellow-500'} ${buttonActiveColor}`}
+        >
+          LEFT
+        </button>
+        <button
+          onClick={() => setActivePane('right')}
+          className={`px-6 py-2 rounded-r-full font-semibold transition-colors duration-200 border ${isGreenTheme ? 'border-green-800' : 'border-yellow-500'} ${buttonActiveColor}`}
+        >
+          RIGHT
+        </button>
+      </div>
+
+      {/* New Floating Tools Pane */}
+      <div
+        className={`fixed bottom-4 right-4 p-4 rounded-xl z-40 transition-transform duration-300
+                    ${showFloatingPane ? 'translate-x-0' : 'translate-x-full'} ${floatingPaneClass}`}
+      >
+        <h3 className="text-lg font-bold mb-2 border-b border-current pb-1">TOOLCHAIN</h3>
+        <div className="flex flex-col space-y-2">
+          <button
+            onClick={() => handleToolAction('PASTE TO GIST')}
+            className={`px-4 py-2 text-sm rounded-lg border hover:bg-opacity-80 transition-colors duration-200 ${floatingPaneButtonClass}`}
+          >
+            PASTE TO GIST
+          </button>
+          <button
+            onClick={() => handleToolAction('START NEW REPO')}
+            className={`px-4 py-2 text-sm rounded-lg border hover:bg-opacity-80 transition-colors duration-200 ${floatingPaneButtonClass}`}
+          >
+            START NEW REPO
+          </button>
+          <button
+            onClick={() => handleToolAction('BOOKMARK PAGE')}
+            className={`px-4 py-2 text-sm rounded-lg border hover:bg-opacity-80 transition-colors duration-200 ${floatingPaneButtonClass}`}
+          >
+            BOOKMARK PAGE
+          </button>
+          <button
+            onClick={() => handleToolAction('SEND TO EMAIL')}
+            className={`px-4 py-2 text-sm rounded-lg border hover:bg-opacity-80 transition-colors duration-200 ${floatingPaneButtonClass}`}
+          >
+            SEND TO EMAIL
+          </button>
+        </div>
+      </div>
+
+      {/* Button to toggle the floating pane */}
+      <button
+        onClick={() => setShowFloatingPane(!showFloatingPane)}
+        className={`fixed bottom-4 right-4 z-50 p-3 rounded-full font-semibold transition-colors duration-200 border text-white
+                    ${isGreenTheme ? 'bg-green-700 border-green-500 hover:bg-green-600' : 'bg-blue-600 border-blue-500 hover:bg-blue-500'}`}
+      >
+        {showFloatingPane ? 'CLOSE' : 'TOOLS'}
+      </button>
+
+
+      {/* Tailwind Custom CSS - for glow effects and animations */}
+      <style>
+        {`
+        @keyframes glow-green {
+          0%, 100% {
+            text-shadow: 0 0 5px rgba(0, 255, 0, 0.5), 0 0 10px rgba(0, 255, 0, 0.3);
+          }
+          50% {
+            text-shadow: 0 0 10px rgba(0, 255, 0, 0.8), 0 0 20px rgba(0, 255, 0, 0.6);
+          }
+        }
+        @keyframes glow-yellow {
+          0%, 100% {
+            text-shadow: 0 0 5px rgba(255, 255, 0, 0.5), 0 0 10px rgba(255, 255, 0, 0.3);
+          }
+          50% {
+            text-shadow: 0 0 10px rgba(255, 255, 0, 0.8), 0 0 20px rgba(255, 255, 0, 0.6);
+          }
+        }
+        @keyframes glow-red {
+          0%, 100% {
+            text-shadow: 0 0 5px rgba(255, 0, 0, 0.5), 0 0 10px rgba(255, 0, 0, 0.3);
+          }
+          50% {
+            text-shadow: 0 0 10px rgba(255, 0, 0, 0.8), 0 0 20px rgba(255, 0, 0, 0.6);
+          }
+        }
+        .glow-green {
+          animation: glow-green 2s infinite ease-in-out;
+        }
+        .glow-yellow {
+          animation: glow-yellow 2s infinite ease-in-out;
+        }
+        .glow-red {
+          animation: glow-red 2s infinite ease-in-out;
+        }
+        .glow-green-btn {
+          box-shadow: 0 0 5px #0f0;
+        }
+        .glow-green-btn:hover {
+          box-shadow: 0 0 10px #0f0, 0 0 20px #0f0;
+        }
+        .range-thumb-glow::-webkit-slider-thumb {
+          background-color: #4CAF50;
+          box-shadow: 0 0 5px #0f0;
+        }
+        .range-thumb-glow::-moz-range-thumb {
+          background-color: #4CAF50;
+          box-shadow: 0 0 5px #0f0;
+        }
+        .glow-input {
+          box-shadow: 0 2px 5px rgba(0, 255, 0, 0.3);
+        }
+        .glow-text-thin {
+          text-shadow: 0 0 2px rgba(0, 255, 0, 0.8);
+        }
+        .glow-text-yellow {
+          text-shadow: 0 0 2px rgba(255, 255, 0, 0.8);
+        }
+        .dot-grid-bg {
+          background-image: radial-gradient(rgba(255, 255, 255, 0.2) 1px, transparent 1px);
+          background-size: 15px 15px;
+        }
+        .line-grid-bg {
+          background-image: linear-gradient(to right, rgba(255, 255, 255, 0.2) 1px, transparent 1px),
+                            linear-gradient(to bottom, rgba(255, 255, 255, 0.2) 1px, transparent 1px);
+          background-size: 20px 20px;
+        }
+        .win95-button {
+          background-color: #C0C0C0;
+          color: black;
+          border: 2px solid #000;
+          border-right-color: #fff;
+          border-bottom-color: #fff;
+        }
+        .win95-button:active {
+          background-color: #808080;
+          border-color: #fff #000 #000 #fff;
+        }
+        .win95-border {
+          border-color: #fff #000 #000 #fff;
+          border-width: 2px;
+          border-style: solid;
+        }
+        `}
+      </style>
+    </div>
+  );
+};
+
+export default App;
+
